@@ -44,7 +44,9 @@ RUN git clone --branch dev-docker_run https://github.com/DISCOWER/px4-mpc.git te
 
 WORKDIR /ros2_ws
 # Build the package(s)
-RUN bash -c "source /opt/ros/jazzy/setup.bash && colcon build --symlink-install"
+RUN bash -c "set -e \
+    && source /opt/ros/jazzy/setup.bash \
+    && colcon build --symlink-install --event-handlers console_direct+"
 RUN pip3 install mavsdk --break-system-packages
 ENV MPC_NAMESPACE=snap
 

@@ -3,7 +3,7 @@ name: Build, smoke test, and push to Zot
 on:
   workflow_dispatch:
   push:
-    branches: [ isabu/robot_testing_pipeline ]
+    branches: [ main ]
     paths:
       - 'dockerfiles/**'
       - 'docker-compose.yml'
