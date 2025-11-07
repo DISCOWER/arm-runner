@@ -1,0 +1,71 @@
+name: Build, smoke test, and push to Zot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ isabu/robot_testing_pipeline ]
+    paths:
+      - 'dockerfiles/**'
+      - 'docker-compose.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: kth-registry.waraps.org   # your Zot host (no /zot here)
+      REPO_BASE: dev                      # pushes under dev/** as per ACL
+      DOCKERFILE: dockerfiles/px4_mpc.Dockerfile
+      IMAGE_NAME: px4_mpc            # hardcoded image name
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Normalize image repo name: lowercase + no underscores
+      - name: Sanitize image repo name
+        id: sanitize
+        run: |
+          SAFE_IMAGE_NAME="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/_/-/g')"
+          echo "SAFE_IMAGE_NAME=$SAFE_IMAGE_NAME" >> "$GITHUB_ENV"
+          echo "IMAGE=${{ env.REGISTRY }}/${{ env.REPO_BASE }}/${SAFE_IMAGE_NAME}" >> "$GITHUB_ENV"
+          echo "TAG_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
+          echo "Using IMAGE=${{ env.REGISTRY }}/${{ env.REPO_BASE }}/${SAFE_IMAGE_NAME}"
+
+      - name: Log in to Zot
+        env:
+          ZOT_USERNAME: ${{ secrets.ZOT_USERNAME }}
+          ZOT_PASSWORD: ${{ secrets.ZOT_PASSWORD }}
+        run: |
+          echo "$ZOT_PASSWORD" | docker login ${{ env.REGISTRY }} -u "$ZOT_USERNAME" --password-stdin
+
+      - name: Build & push (OCI, single-arch, no provenance/SBOM)
+        run: |
+          set -euo pipefail
+          echo "Building Dockerfile: $DOCKERFILE"
+          echo "Tagging as:"
+          echo " - $IMAGE:$TAG_SHA"
+          echo " - $IMAGE:latest"
+
+          # if you DON'T want slow emulated builds, drop --platform
+          docker buildx build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --output "type=registry,oci-mediatypes=true,name=$IMAGE:$TAG_SHA,name=$IMAGE:latest,push=true" \
+            -f "$DOCKERFILE" \
+            .
+
+      - name: Logout
+        if: always()
+        run: docker logout ${{ env.REGISTRY }} || true
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Pushed:"
+          echo "  - $IMAGE:$TAG_SHA"
+          echo "  - $IMAGE:latest"
