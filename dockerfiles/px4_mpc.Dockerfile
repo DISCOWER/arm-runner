@@ -40,7 +40,7 @@ WORKDIR /ros2_ws/src
 RUN git clone  https://github.com/DISCOWER/px4-mpc.git temp_folder_name_for_px4_mpc_repo && \
     cd temp_folder_name_for_px4_mpc_repo && \
     git clone https://github.com/Jaeyoung-Lim/px4-offboard.git && \
-    git clone https://github.com/DISCOWER/px4_msgs.git
+    git clone https://github.com/PX4/px4_msgs.git
 
 WORKDIR /ros2_ws
 # Build the package(s)
