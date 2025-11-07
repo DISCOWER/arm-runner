@@ -37,7 +37,7 @@ RUN mv tera_renderer/target/release/t_renderer bin/
 
 # Clone packages into the workspace
 WORKDIR /ros2_ws/src
-RUN git clone --branch dev-docker_run https://github.com/DISCOWER/px4-mpc.git temp_folder_name_for_px4_mpc_repo && \
+RUN git clone  https://github.com/DISCOWER/px4-mpc.git temp_folder_name_for_px4_mpc_repo && \
     cd temp_folder_name_for_px4_mpc_repo && \
     git clone https://github.com/Jaeyoung-Lim/px4-offboard.git && \
     git clone https://github.com/DISCOWER/px4_msgs.git
