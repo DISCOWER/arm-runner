@@ -1,15 +1,19 @@
 name: Trigger
+
 on:
   workflow_dispatch:
     inputs:
-      dockerfile:
-        description: "Path to the Dockerfile"
+      dockerfile_name:
+        description: "Filename to write on the runner"
         required: false
-        default: "dockerfiles/px4_mpc.Dockerfile"
+        default: "Dockerfile"
       image_name:
         description: "Image name (without registry/repo)"
         required: false
         default: "px4_mpc"
+      dockerfile_content_b64:
+        description: "Base64-encoded Dockerfile content"
+        required: true
   push:
     branches: [ main ]
     paths:
@@ -20,44 +24,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      REGISTRY: kth-registry.waraps.org   # your Zot host (no /zot here)
-      REPO_BASE: dev                      # pushes under dev/** as per ACL
+      REGISTRY: kth-registry.waraps.org
+      REPO_BASE: dev
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Decide Dockerfile and image name: prefer workflow_dispatch inputs, otherwise fall back
-      - name: Resolve inputs
-        id: resolve
+      - name: Resolve inputs & write Dockerfile
         run: |
-          DOCKERFILE="${{ github.event.inputs.dockerfile }}"
+          DOCKERFILE_NAME="${{ github.event.inputs.dockerfile_name }}"
           IMAGE_NAME="${{ github.event.inputs.image_name }}"
+          CONTENT_B64="${{ github.event.inputs.dockerfile_content_b64 }}"
 
-          # fallback if triggered by push or inputs empty
-          if [ -z "$DOCKERFILE" ]; then
-            DOCKERFILE="dockerfiles/px4_mpc.Dockerfile"
+          if [ -z "$DOCKERFILE_NAME" ]; then
+            DOCKERFILE_NAME="Dockerfile"
           fi
           if [ -z "$IMAGE_NAME" ]; then
             IMAGE_NAME="px4_mpc"
           fi
 
-          echo "DOCKERFILE=$DOCKERFILE" >> $GITHUB_ENV
+          echo "$CONTENT_B64" | base64 -d > "$DOCKERFILE_NAME"
+
+          echo "DOCKERFILE_NAME=$DOCKERFILE_NAME" >> $GITHUB_ENV
           echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
 
-      # Normalize image repo name: lowercase + no underscores
       - name: Sanitize image repo name
-        id: sanitize
         run: |
           SAFE_IMAGE_NAME="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/_/-/g')"
           echo "SAFE_IMAGE_NAME=$SAFE_IMAGE_NAME" >> "$GITHUB_ENV"
           echo "IMAGE=${{ env.REGISTRY }}/${{ env.REPO_BASE }}/${SAFE_IMAGE_NAME}" >> "$GITHUB_ENV"
           echo "TAG_SHA=${{ github.sha }}" >> "$GITHUB_ENV"
-          echo "Using IMAGE=${{ env.REGISTRY }}/${{ env.REPO_BASE }}/${SAFE_IMAGE_NAME}"
 
       - name: Log in to Zot
         env:
@@ -66,29 +66,14 @@ jobs:
         run: |
           echo "$ZOT_PASSWORD" | docker login ${{ env.REGISTRY }} -u "$ZOT_USERNAME" --password-stdin
 
-      - name: Build & push (OCI, single-arch, no provenance/SBOM)
+      - name: Build & push
         run: |
           set -euo pipefail
-          echo "Building Dockerfile: $DOCKERFILE"
-          echo "Tagging as:"
-          echo " - $IMAGE:$TAG_SHA"
-          echo " - $IMAGE:latest"
-
+          echo "Building Dockerfile: $DOCKERFILE_NAME"
           docker buildx build \
             --platform linux/arm64 \
             --provenance=false \
             --sbom=false \
             --output "type=registry,oci-mediatypes=true,name=$IMAGE:$TAG_SHA,name=$IMAGE:latest,push=true" \
-            -f "$DOCKERFILE" \
+            -f "$DOCKERFILE_NAME" \
             .
-
-      - name: Logout
-        if: always()
-        run: docker logout ${{ env.REGISTRY }} || true
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "✅ Pushed:"
-          echo "  - $IMAGE:$TAG_SHA"
-          echo "  - $IMAGE:latest"
