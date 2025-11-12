@@ -1,4 +1,6 @@
 name: Trigger
+# 👇 Add a searchable run name (image name + optional correlation id)
+run-name: "Build ${{ inputs.image_name }}"
 
 on:
   workflow_dispatch:
@@ -36,17 +38,18 @@ jobs:
 
       - name: Resolve inputs & write Dockerfile
         run: |
+          set -euo pipefail
           DOCKERFILE_NAME="${{ github.event.inputs.dockerfile_name }}"
           IMAGE_NAME="${{ github.event.inputs.image_name }}"
           CONTENT_B64="${{ github.event.inputs.dockerfile_content_b64 }}"
 
-          if [ -z "$DOCKERFILE_NAME" ]; then
-            DOCKERFILE_NAME="Dockerfile"
-          fi
-          if [ -z "$IMAGE_NAME" ]; then
-            IMAGE_NAME="px4_mpc"
-          fi
+          if [ -z "${DOCKERFILE_NAME:-}" ]; then DOCKERFILE_NAME="Dockerfile"; fi
+          if [ -z "${IMAGE_NAME:-}" ]; then IMAGE_NAME="px4_mpc"; fi
 
+          # ✅ Make sure the directory exists before writing
+          mkdir -p "$(dirname "$DOCKERFILE_NAME")"
+
+          # ✅ Write the file
           echo "$CONTENT_B64" | base64 -d > "$DOCKERFILE_NAME"
 
           echo "DOCKERFILE_NAME=$DOCKERFILE_NAME" >> $GITHUB_ENV
@@ -54,6 +57,7 @@ jobs:
 
       - name: Sanitize image repo name
         run: |
+          set -euo pipefail
           SAFE_IMAGE_NAME="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g' | sed 's/_/-/g')"
           echo "SAFE_IMAGE_NAME=$SAFE_IMAGE_NAME" >> "$GITHUB_ENV"
           echo "IMAGE=${{ env.REGISTRY }}/${{ env.REPO_BASE }}/${SAFE_IMAGE_NAME}" >> "$GITHUB_ENV"
